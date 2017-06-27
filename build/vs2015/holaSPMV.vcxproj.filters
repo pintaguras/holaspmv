@@ -1,0 +1,65 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="source">
+      <UniqueIdentifier>{abf94e3c-5ed8-4059-9472-a00c7fb255cd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="header">
+      <UniqueIdentifier>{2266c4a9-4c8e-4f74-bb59-589a3e1f0817}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\source\main.cpp">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\source\COO.cpp">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\source\CSR.cpp">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\source\dCSR.cpp">
+      <Filter>source</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\include\COO.h">
+      <Filter>header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\CSR.h">
+      <Filter>header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\Vector.h">
+      <Filter>header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\dVector.h">
+      <Filter>header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\dCSR.h">
+      <Filter>header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\naivespmv.h">
+      <Filter>header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\holaspmv.h">
+      <Filter>header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\common.cuh">
+      <Filter>header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\common.h">
+      <Filter>header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\meta_utils.h">
+      <Filter>header</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="..\..\source\naivespmv.cu">
+      <Filter>source</Filter>
+    </CudaCompile>
+    <CudaCompile Include="..\..\source\holaspmv.cu">
+      <Filter>source</Filter>
+    </CudaCompile>
+  </ItemGroup>
+</Project>
