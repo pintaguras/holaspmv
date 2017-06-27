@@ -52,7 +52,7 @@ Hola has been evaluated with on all reasonably sized SuiteSparse matrices.
 When you use the code in a scientific work, please cite our paper
 
 Globally Homogeneous, Locally Adaptive Sparse Matrix-Vector Multiplication on the GPU  
-Steinberger, Markus and Zayer, Rhaleb and Seidel, Hans-Peter  
+Markus Steinberger,  Rhaleb Zayer and Hans-Peter Seidel  
 Proceedings of the International Conference on Supercomputing, 2017
 
 	:::
@@ -82,12 +82,12 @@ The source code includes our naive SpMV and transpose SpMV implementation. If yo
 
 
 How naive is naive SpMV on the GPU?  
-M. Steinberger and A. Derler and R. Zayer and H. P. Seidel  
+Markus Steinberger, Andreas Derler, Rhaleb Zayer and Hans-Peter Seidel  
 IEEE High Performance Extreme Computing Conference, 2016
 
 	:::
 		@INPROCEEDINGS{7761634,
-		author={M. Steinberger and A. Derler and R. Zayer and H. P. Seidel},
+		author={Markus Steinberger and Andreas Derler and Rhaleb Zayer and Hans-Peter Seidel},
 		booktitle={2016 IEEE High Performance Extreme Computing Conference (HPEC)},
 		title={How naive is naive SpMV on the GPU?},
 		year={2016},
