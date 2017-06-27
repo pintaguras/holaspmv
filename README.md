@@ -109,11 +109,11 @@ The supplemental performance plots can be found here:
 
 | Operation  | Size   | Format  | Link  |
 | ---------- | ------ | ------- | ----- |
-| SpMV       | small  | float   | [pdf](graphs/spmv_comp_marker_float_small.pdf) |
-| SpMV       | large  | float   | [pdf](graphs/spmv_comp_marker_float_large.pdf) |
-| SpMV       | small  | double  | [pdf](graphs/spmv_comp_marker_double_small.pdf) |
-| SpMV       | large  | double  | [pdf](graphs/spmv_comp_marker_double_large.pdf) |
-| SpMVT      | small  | float   | [pdf](graphs/spmv_comp_marker_t_float_small.pdf) |
-| SpMVT      | large  | float   | [pdf](graphs/spmv_comp_marker_t_float_large.pdf) |
-| SpMVT      | small  | double  | [pdf](graphs/spmv_comp_marker_t_double_small.pdf) |
-| SpMVT      | large  | double  | [pdf](graphs/spmv_comp_marker_t_double_large.pdf) |
+| SpMV       | small  | float   | [pdf](raw/b5613f90aea7fc524498e1f82b0ca53bc580e589/graphs/spmv_comp_marker_float_small.pdf) |
+| SpMV       | large  | float   | [pdf](raw/b5613f90aea7fc524498e1f82b0ca53bc580e589/graphs/spmv_comp_marker_float_large.pdf) |
+| SpMV       | small  | double  | [pdf](raw/b5613f90aea7fc524498e1f82b0ca53bc580e589/graphs/spmv_comp_marker_double_small.pdf) |
+| SpMV       | large  | double  | [pdf](raw/b5613f90aea7fc524498e1f82b0ca53bc580e589/graphs/spmv_comp_marker_double_large.pdf) |
+| SpMVT      | small  | float   | [pdf](raw/b5613f90aea7fc524498e1f82b0ca53bc580e589/graphs/spmv_comp_marker_t_float_small.pdf) |
+| SpMVT      | large  | float   | [pdf](raw/b5613f90aea7fc524498e1f82b0ca53bc580e589/graphs/spmv_comp_marker_t_float_large.pdf) |
+| SpMVT      | small  | double  | [pdf](raw/b5613f90aea7fc524498e1f82b0ca53bc580e589/graphs/spmv_comp_marker_t_double_small.pdf) |
+| SpMVT      | large  | double  | [pdf](raw/b5613f90aea7fc524498e1f82b0ca53bc580e589/graphs/spmv_comp_marker_t_double_large.pdf) |
