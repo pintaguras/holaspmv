@@ -47,9 +47,20 @@ Hola has been evaluated with on all reasonably sized SuiteSparse matrices.
 ---
 ### Resources
 
+
 ##### [Globally Homogeneous, Locally Adaptive Sparse Matrix-Vector Multiplication on the GPU](http://dl.acm.org/citation.cfm?id=3079086)
-When you use the code in a scientific work, please cite our paper Globally Homogeneous, Locally Adaptive Sparse Matrix-Vector Multiplication on the GPU:
-```@inproceedings{Steinberger:2017:GHL:3079079.3079086,
+When you use the code in a scientific work, please cite our paper
+
+
+Globally Homogeneous, Locally Adaptive Sparse Matrix-Vector Multiplication on the GPU
+
+Steinberger, Markus and Zayer, Rhaleb and Seidel, Hans-Peter
+
+Proceedings of the International Conference on Supercomputing, 2017
+
+
+ ```
+ @inproceedings{Steinberger:2017:GHL:3079079.3079086,
  author = {Steinberger, Markus and Zayer, Rhaleb and Seidel, Hans-Peter},
  title = {Globally Homogeneous, Locally Adaptive Sparse Matrix-vector Multiplication on the GPU},
  booktitle = {Proceedings of the International Conference on Supercomputing},
@@ -66,19 +77,32 @@ When you use the code in a scientific work, please cite our paper Globally Homog
  publisher = {ACM},
  address = {New York, NY, USA},
  keywords = {GPU, SpMV, linear algebra, sparse matrix},
-}```
+}
+```
+
 
 ##### [How naive is naive SpMV on the GPU?](http://ieeexplore.ieee.org/document/7761634/)
 The source code includes our naive SpMV and transpose SpMV implementation. If you use this code, please cite:
-```@INPROCEEDINGS{7761634,
-author={M. Steinberger and A. Derlery and R. Zayer and H. P. Seidel},
+
+
+How naive is naive SpMV on the GPU?
+
+M. Steinberger and A. Derler and R. Zayer and H. P. Seidel
+
+IEEE High Performance Extreme Computing Conference, 2016
+
+
+```
+@INPROCEEDINGS{7761634,
+author={M. Steinberger and A. Derler and R. Zayer and H. P. Seidel},
 booktitle={2016 IEEE High Performance Extreme Computing Conference (HPEC)},
 title={How naive is naive SpMV on the GPU?},
 year={2016},
 pages={1-8},
 keywords={cache storage;data handling;graphics processing units;matrix multiplication;parallel processing;sparse matrices;GPU hardware;cache performance;complex data format;data conversion;direct multiplication;fast hardware supported atomic operation;format conversion;graphics hardware;highly tuned parallel implementation;linear algebra computation;multiplication transposition;naive SpMV;sparse matrix vector multiplication;transpose operation;Bandwidth;Graphics processing units;Hardware;Instruction sets;Load management;Memory management;Sparse matrices},
 doi={10.1109/HPEC.2016.7761634},
-month={Sept},}```
+month={Sept},}
+```
 
 
 ---
@@ -90,6 +114,7 @@ month={Sept},}```
 ### Paper Graphs
 
 The supplemental performance plots can be found here:
+
 | Operation  | Size   | Format  | Link  |
 | ---------- | ------ | ------- | ----- |
 | SpMV       | small  | float   | [pdf](graphs/spmv_comp_marker_float_small.pdf) |
