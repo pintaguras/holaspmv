@@ -6,7 +6,7 @@ Hola SpMV: Globally Homogeneous, Locally Adaptive Sparse Matrix-Vector Multiplic
 ### Introduction
 
 Hola SpMV provides an efficient sparse matrix vector multiplication for NVIDIA GPUs.
-It takes a CSR matrix (M) and a to-be-multiplied vector (a) as input and computes b=M*a.
+It takes a CSR matrix (M) and a vector (a) as input and computes b=M*a.
 Hola SpMV performs load balancing between thread blocks. For this load balancing it requires an additional GPU buffer.
 This buffer must be allocated before running SpMV and will be filled as a first step during SpMV.
 The code is currently under development and will be updated in terms of useability, readability and performance.
@@ -41,8 +41,8 @@ It then computes the ground truth SpMV on the CPU before running `naiveSpMV` and
 Hola SpMV requires an additional buffer for load balancing, which is to be executed on the GPU before launching SpMV.
 To query the size of the buffer, call the HolaSpMV function with a nullptr. 
 
-mtx matrices can be downloaded from [SuiteSparse](https://www.cise.ufl.edu/research/sparse/matrices/)
-Hola has been evaluated with on all reasonably sized SuiteSparse matrices.
+mtx matrices can be downloaded from [SuiteSparse](https://www.cise.ufl.edu/research/sparse/matrices/).
+Hola has been evaluated on all reasonably sized SuiteSparse matrices.
 
 ---
 ### Resources
