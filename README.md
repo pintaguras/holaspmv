@@ -14,6 +14,8 @@ The code is currently under development and will be updated in terms of useabili
 ---
 ### Recent updates
 
+ * 3.11.2018 CMake support
+ * 3.11.2018 fix for loading symmetric and hermitian matrices
  * 27.6.2017 Initial upload of naive SpMV, naive SpMVT and Hola SpMV
  
 ### Expected updates
