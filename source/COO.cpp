@@ -53,6 +53,8 @@ void COO<T>::alloc(size_t r, size_t c, size_t n)
 template<typename T>
 COO<T> loadMTX(const char * file)
 {
+
+
 	std::ifstream fstream(file);
 	if (!fstream.is_open())
 		throw std::runtime_error(std::string("could not open \"") + file + "\"");
@@ -153,8 +155,8 @@ COO<T> loadMTX(const char * file)
 		++read;
 		if ((symmetric || hermitian) && r != c)
 		{
-			resmatrix.row_ids[read] = r - 1;
-			resmatrix.col_ids[read] = c - 1;
+			resmatrix.row_ids[read] = c - 1;
+			resmatrix.col_ids[read] = r - 1;
 			resmatrix.data[read] = d;
 			++read;
 		}
