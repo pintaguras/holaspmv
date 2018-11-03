@@ -20,7 +20,7 @@
 //test settings
 using DataType = double;
 HolaMode holaMode = HolaMode::Default;
-bool transpose = false;
+bool defTranspose = false;
 unsigned int padding = 0; // 0; // 1024;
 
 
@@ -45,6 +45,10 @@ int main(int argc, const char* argv[])
 	int device = 0;
 	if (argc >= 3)
 		device = std::stoi(argv[2]);
+
+	bool transpose = defTranspose;
+	if (argc >= 4)
+		transpose = std::stoi(argv[3]) != 0;
 	
 	cudaSetDevice(device);
 	cudaDeviceProp prop;
@@ -93,13 +97,16 @@ int main(int argc, const char* argv[])
 		//compute ground truth
 		std::cout << "creating input data\n";
 		DenseVector<DataType> res, input;
-		input.alloc(csr_mat.cols);
+		input.alloc(transpose ? csr_mat.rows : csr_mat.cols);
 
 		std::mt19937 gen(123456789);
 		std::uniform_real_distribution<> dis(0, 1.0);
 		std::generate(&input.data[0], &input.data[input.size], [&]() {return dis(gen); });
 
-		std::cout << "computing ground truth SPMV on the CPU\n";
+		if(transpose)
+			std::cout << "computing ground truth SPMV transpose on the CPU\n";
+		else
+			std::cout << "computing ground truth SPMV on the CPU\n";
 		spmv(res, csr_mat, input, transpose);
 
 		std::cout << "setting up GPU memory\n";
@@ -112,7 +119,11 @@ int main(int argc, const char* argv[])
 		convert(dcsr_mat, csr_mat, padding);
 		convert(dinput, input, padding);
 
-		std::cout << "computing naive SPMV on the GPU\n";
+		if (transpose)
+			std::cout << "computing naive SPMV transpose on the GPU\n";
+		else
+			std::cout << "computing naive SPMV on the GPU\n";
+
 		naive_spmv(dres, dcsr_mat, dinput, transpose);
 		if (cudaDeviceSynchronize() != cudaSuccess)
 			throw std::runtime_error(cudaGetErrorString(cudaGetLastError()));
@@ -128,7 +139,10 @@ int main(int argc, const char* argv[])
 		if (cudaDeviceSynchronize() != cudaSuccess)
 			throw std::runtime_error(cudaGetErrorString(cudaGetLastError()));
 
-		std::cout << "computing Hola SPMV on the GPU\n";
+		if (transpose)
+			std::cout << "computing Hola SPMV transpose on the GPU\n";
+		else
+			std::cout << "computing Hola SPMV on the GPU\n";
 		hola_spmv(dholatemp, holatemp_req, dres, dcsr_mat, dinput, holaMode, transpose, padding >= 512 ? true : false);
 		if (cudaDeviceSynchronize() != cudaSuccess)
 			throw std::runtime_error(cudaGetErrorString(cudaGetLastError()));

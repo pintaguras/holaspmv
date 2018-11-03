@@ -13,14 +13,12 @@ The code is currently under development and will be updated in terms of useabili
 
 ---
 ### Recent updates
-
+ * 3.11.2018 first integration of Hola SpMVT
  * 3.11.2018 CMake support
  * 3.11.2018 fix for loading symmetric and hermitian matrices
  * 27.6.2017 Initial upload of naive SpMV, naive SpMVT and Hola SpMV
  
 ### Expected updates
- * CMake build files for Linux
- * Transpose SpMV with Hola
  * Tuned parameters for different GPU generations
  * Performance optimizations for small matrices
 
@@ -36,7 +34,8 @@ It has been developed with CUDA Toolkit 8.0 and optimized for Maxwell and Pascal
 Hola SpMV uses the reduction found in [cub](https://nvlabs.github.io/cub/). Before building, make sure to clone cub in the `deps/`.
 Under Windows you can use the provided `pull.bat`.
 
-Currently, build files are included for Visual Studio 2015 under `build/vs2015`. In the near future we will include CMake files for building and running under Linux.
+Currently, build files are included for Visual Studio 2015 under `build/vs2015` and CMake files for building and running under Linux/Windows.
+When using CMake, ensure that you build device code for your GPU generation (see CMake options).
 
 The executeable loads an mtx file (supplied as the first command argument), converts it to CSR, stores the converted matrix as a binary file for reuse.
 It then computes the ground truth SpMV on the CPU before running `naiveSpMV` and `holaSpMV`. 

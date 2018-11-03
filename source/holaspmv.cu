@@ -4,7 +4,7 @@
 
 #include <stdint.h>
 #include <stdexcept>
-
+#include <algorithm>
 
 //double atomic add hack for devices that do not support it in hardware
 template<typename T>
@@ -490,6 +490,22 @@ struct ValueLoader<THREADS, NNZ_PER_THREAD, true, VALUE_TYPE1, VALUE_TYPE2, VALU
 		vectorized_to_blocked<MaxVecLoadIndex>(indices);
 
 	}
+
+	__device__
+	static void loadValues(VALUE_TYPE3(&values)[NNZ_PER_THREAD], const VALUE_TYPE1* matrix, uint32_t nnz)
+	{
+		const int MaxVecLoadMat = 16 / sizeof(VALUE_TYPE1);
+		warp_load_vectorized<MaxVecLoadMat>(values, matrix + blockIdx.x*(THREADS*NNZ_PER_THREAD));
+		vectorized_to_blocked<MaxVecLoadMat>(values);
+	}
+
+	__device__
+	static void loadIndices(INDEX_TYPE(&indices)[NNZ_PER_THREAD], const INDEX_TYPE* inIndex, uint32_t nnz)
+	{
+		const int MaxVecLoadIndex = 16 / sizeof(INDEX_TYPE);
+		warp_load_vectorized<MaxVecLoadIndex>(indices, inIndex + blockIdx.x*(THREADS*NNZ_PER_THREAD));
+		vectorized_to_blocked<MaxVecLoadIndex>(indices);
+	}
 };
 
 template<uint32_t THREADS, uint32_t NNZ_PER_THREAD, typename VALUE_TYPE1, typename VALUE_TYPE2, typename VALUE_TYPE3, typename INDEX_TYPE>
@@ -553,6 +569,74 @@ struct ValueLoader<THREADS, NNZ_PER_THREAD, false, VALUE_TYPE1, VALUE_TYPE2, VAL
 		}
 	}
 
+	__device__
+		static void loadValues(VALUE_TYPE3(&values)[NNZ_PER_THREAD], const VALUE_TYPE1* matrix, uint32_t nnz)
+	{
+		const int MaxVecLoadMat = 16 / sizeof(VALUE_TYPE1);
+
+		uint32_t warp_offset = blockIdx.x*(THREADS*NNZ_PER_THREAD) + threadIdx.x / WARP_SIZE * WARP_SIZE*NNZ_PER_THREAD;
+		if (warp_offset + WARP_SIZE * NNZ_PER_THREAD <= nnz)
+		{
+			//full warp load case
+			warp_load_vectorized<MaxVecLoadMat>(values, matrix + blockIdx.x*(THREADS*NNZ_PER_THREAD));
+			vectorized_to_blocked<MaxVecLoadMat>(values);
+		}
+		else if (warp_offset < nnz)
+		{
+			//warp is partially filled... load it in a naive way
+			uint32_t offset = blockIdx.x*(THREADS*NNZ_PER_THREAD) + threadIdx.x*NNZ_PER_THREAD;
+
+			#pragma unroll
+			for (int i = 0; i < NNZ_PER_THREAD; ++i)
+			{
+				if (offset + i < nnz)
+					values[i] = matrix[offset + i];
+				else
+					values[i] = 0;
+			}
+		}
+		else
+		{
+			//full warp out of bounds -> fill with 0
+			#pragma unroll
+			for (int i = 0; i < NNZ_PER_THREAD; ++i)
+				values[i] = 0;
+		}
+	}
+
+	__device__
+		static void loadIndices(INDEX_TYPE(&indices)[NNZ_PER_THREAD], const INDEX_TYPE* inIndex, uint32_t nnz)
+	{
+		const int MaxVecLoadIndex = 16 / sizeof(INDEX_TYPE);
+		uint32_t warp_offset = blockIdx.x*(THREADS*NNZ_PER_THREAD) + threadIdx.x / WARP_SIZE * WARP_SIZE*NNZ_PER_THREAD;
+		if (warp_offset + WARP_SIZE * NNZ_PER_THREAD <= nnz)
+		{
+			//full warp load case
+			warp_load_vectorized<MaxVecLoadIndex>(indices, inIndex + blockIdx.x*(THREADS*NNZ_PER_THREAD));
+			vectorized_to_blocked<MaxVecLoadIndex>(indices);
+		}
+		else if (warp_offset < nnz)
+		{
+			//warp is partially filled... load it in a naive way
+			uint32_t offset = blockIdx.x*(THREADS*NNZ_PER_THREAD) + threadIdx.x*NNZ_PER_THREAD;
+
+			#pragma unroll
+			for (int i = 0; i < NNZ_PER_THREAD; ++i)
+			{
+				if (offset + i < nnz)
+					indices[i] = inIndex[offset + i];
+				else
+					indices[i] = 0;
+			}
+		}
+		else
+		{
+			//full warp out of bounds -> fill with 0
+			#pragma unroll
+			for (int i = 0; i < NNZ_PER_THREAD; ++i)
+				indices[i] = 0;
+		}
+	}
 };
 
 template<uint32_t THREADS, uint32_t NNZ_PER_THREAD, typename VALUE_TYPE1, typename VALUE_TYPE2, typename VALUE_TYPE3, typename INDEX_TYPE>
@@ -1082,6 +1166,351 @@ template<typename VALUE_TYPE1, typename VALUE_TYPE2, typename VALUE_TYPE3, typen
 
 
 
+
+template<typename ACCESS_F, typename COLL_ACCESS_F, typename SEP_FUNCTION, class TYPE, class INDEXTYPE, uint32_t NNZ_PER_THREAD>
+__device__ void sortedResolve(TYPE(&values)[NNZ_PER_THREAD], INDEXTYPE(&col_indices)[NNZ_PER_THREAD], ACCESS_F accessF, COLL_ACCESS_F collAccessF, SEP_FUNCTION sepF)
+{
+	// keep adding up
+	TYPE out = values[0];
+#pragma unroll
+	for (uint32_t i = 1; i < NNZ_PER_THREAD; ++i)
+	{
+		if (col_indices[i - 1] != col_indices[i])
+		{
+			accessF(col_indices[i - 1], out);
+			out = values[i];
+		}
+		else
+			out = out + values[i];
+	}
+	sepF();
+	INDEXTYPE lower_col = __shfl_up(col_indices[NNZ_PER_THREAD - 1], 1);
+	bool pivot = lower_col != col_indices[NNZ_PER_THREAD - 1];
+	if (__popc(__ballot(pivot)) >= 16)
+	{
+		//atomic out
+		collAccessF(col_indices[NNZ_PER_THREAD - 1], out);
+	}
+	else
+	{
+		//conditional reduction
+		bool pivot_right = laneid() == 31;
+#pragma unroll
+		for (int offset = 1; offset < WARP_SIZE; offset *= 2)
+		{
+			TYPE incoming_res = __shfl_down(pivot ? 0.0f : out, offset);
+			if (!pivot_right)
+				out += incoming_res;
+			bool incoming_pivot = __shfl_down(pivot || pivot_right, offset);
+			pivot_right = pivot_right || incoming_pivot;
+		}
+		if ((pivot || laneid() == 0))
+			collAccessF(col_indices[NNZ_PER_THREAD - 1], out);
+	}
+}
+
+
+
+template<typename VALUE_TYPE1, typename VALUE_TYPE2, typename VALUE_TYPE3, typename INDEX_TYPE, typename OFFSET_TYPE,
+	uint32_t NNZ_PER_BLOCK, uint32_t THREADS, uint32_t LAUNCHBOUNDS, bool PADDEDLOAD, bool SCALE, bool SORTED_RESOLVE, bool BUFFERED_RESOLVE, int SORT_DIRECT, bool ROWCOUNT_DIRECT_THRESHOLD, uint32_t OUTPUT_BUFFER_SIZE_MIN, uint32_t OUTPUT_BUFFER_SIZE_MAX>
+	__launch_bounds__(THREADS, LAUNCHBOUNDS)
+	__global__ void MultiplyAlongTranspose(uint32_t num_non_zeroes, uint32_t out_size, uint32_t num_other,
+		const VALUE_TYPE1* matrix, const INDEX_TYPE* inIndex, const OFFSET_TYPE* __restrict offsets, const VALUE_TYPE2* __restrict inVec,
+		VALUE_TYPE3* __restrict outVec, VALUE_TYPE3 scale,
+		uint32_t* __restrict startingIds)
+{
+	const int NNZ_PER_THREAD = NNZ_PER_BLOCK / THREADS;
+	static_assert(NNZ_PER_THREAD * THREADS == NNZ_PER_BLOCK, "NNZ_PER_BLOCK must be evenly devisible by THREADS");
+
+	using CubSorter = cub::BlockRadixSort<uint32_t, THREADS, NNZ_PER_THREAD, VALUE_TYPE3>;
+
+	//automatically increase output buffer in accordance with already required smem and 100% occupancy
+	const uint32_t OUTPUT_BUFFER_SIZE_CALC = static_max<OUTPUT_BUFFER_SIZE_MIN,
+		4 * NNZ_PER_BLOCK / sizeof(VALUE_TYPE3),
+		sizeof(typename CubSorter::TempStorage) / sizeof(VALUE_TYPE3),
+		(98304 / 2048 * THREADS - 32) / sizeof(VALUE_TYPE3)>::value;
+	const uint32_t OUTPUT_BUFFER_SIZE = !(SORTED_RESOLVE || BUFFERED_RESOLVE) ? 1 :
+		OUTPUT_BUFFER_SIZE_MAX <= 0 ? OUTPUT_BUFFER_SIZE_CALC :
+		static_min<OUTPUT_BUFFER_SIZE_MAX, OUTPUT_BUFFER_SIZE_CALC>::value;
+
+	struct SMem
+	{
+		uint32_t bStart, bNum;
+		uint32_t minCol, maxCol;
+		union {
+			VALUE_TYPE3 outBuffer[OUTPUT_BUFFER_SIZE];
+			uint32_t row_offsets[NNZ_PER_THREAD*THREADS];
+			typename CubSorter::TempStorage sortStorage;
+		};
+	};
+	__shared__ SMem smem;
+
+	if (threadIdx.x == 0)
+	{
+		if (!SORTED_RESOLVE && BUFFERED_RESOLVE)
+		{
+			smem.minCol = 0xFFFFFFFF;
+			smem.maxCol = 0;
+		}
+		smem.bStart = startingIds[blockIdx.x];
+		smem.bNum = startingIds[blockIdx.x + 1] - smem.bStart + 1;
+	}
+
+#pragma unroll
+	for (int i = 0; i < NNZ_PER_THREAD; ++i)
+	{
+		smem.row_offsets[threadIdx.x + THREADS * i] = 0xFFFFFFFF;
+	}
+	__syncthreads();
+
+
+	// special cases for single row
+	// multiply with row value and atomic out... no overlap for sure
+	if (smem.bNum == 1)
+	{
+		VALUE_TYPE3 mul = inVec[smem.bStart];
+		uint32_t startOffset = blockIdx.x*(THREADS*NNZ_PER_THREAD) + threadIdx.x;
+		if (SORT_DIRECT == 0)
+		{
+#pragma unroll
+			for (int i = 0; i < NNZ_PER_THREAD; ++i)
+			{
+				uint32_t toffset = i * THREADS + startOffset;
+				VALUE_TYPE3 val = matrix[toffset] * mul;
+				if (SCALE) val = val * scale;
+				INDEX_TYPE col_index = inIndex[toffset];
+				if (val != 0)
+					tempAtomicAdd(outVec + col_index, val);
+			}
+		}
+		else
+		{
+			VALUE_TYPE3 values[NNZ_PER_THREAD];
+			INDEX_TYPE col_indices[NNZ_PER_THREAD];
+#pragma unroll
+			for (int i = 0; i < NNZ_PER_THREAD; ++i)
+			{
+				uint32_t toffset = i * THREADS + startOffset;
+				VALUE_TYPE3 val = matrix[toffset] * mul;
+				if (SCALE) val = val * scale;
+				values[i] = val;
+				col_indices[i] = inIndex[toffset];
+			}
+			if (SORT_DIRECT == 1)
+				threadOddEvenMergeSort<SortAscending>(col_indices, values);
+			else
+				CubSorter(smem.sortStorage).SortBlockedToStriped(col_indices, values);
+			for (int i = 0; i < NNZ_PER_THREAD; ++i)
+				if (values[i] != 0)
+					tempAtomicAdd(outVec + col_indices[i], values[i]);
+		}
+		return;
+	}
+
+	//load matrix
+	VALUE_TYPE3 values[NNZ_PER_THREAD];
+	//const int MaxVecLoadMat = 16 / sizeof(VALUE_TYPE1);
+	//warp_load_vectorized<MaxVecLoadMat>(values, matrix + blockIdx.x*(THREADS*NNZ_PER_THREAD));
+	//vectorized_to_blocked<MaxVecLoadMat>(values);
+
+	ValueLoader<THREADS, NNZ_PER_THREAD, PADDEDLOAD, VALUE_TYPE1, VALUE_TYPE2, VALUE_TYPE3, INDEX_TYPE, 0>::loadValues(values, matrix, num_non_zeroes);
+
+
+	//mark new row starts (decode compressed)
+	for (uint32_t r = threadIdx.x; r < smem.bNum; r += THREADS)
+	{
+		uint32_t ain = offsets[r + smem.bStart];
+		//fast out for empty rows at the end of the marix...
+		if (ain == num_non_zeroes)
+			break;
+		int bin = offsets[r + smem.bStart + 1] - blockIdx.x * THREADS*NNZ_PER_THREAD;
+		int a = max(0, static_cast<int>(ain - blockIdx.x * THREADS*NNZ_PER_THREAD));
+		int b = min(static_cast<int>(THREADS*NNZ_PER_THREAD), bin);
+
+		uint32_t grow = smem.bStart + r;
+		if (a < b)
+			smem.row_offsets[a / NNZ_PER_THREAD + (a%NNZ_PER_THREAD)*THREADS] = grow;
+		//mark all first elements for all threads that share that row
+		int thread_starts = (a / static_cast<int>(NNZ_PER_THREAD) + 1)*static_cast<int>(NNZ_PER_THREAD);
+		for (; thread_starts < b; thread_starts += NNZ_PER_THREAD)
+			smem.row_offsets[thread_starts / NNZ_PER_THREAD + (thread_starts%NNZ_PER_THREAD)*THREADS] = grow;
+	}
+	__syncthreads();
+	VALUE_TYPE3 mul = 0;
+#pragma unroll
+	for (uint32_t i = 0; i < NNZ_PER_THREAD; ++i)
+	{
+		uint32_t trow = smem.row_offsets[threadIdx.x + i * THREADS];
+		if (trow != 0xFFFFFFFF)
+			mul = inVec[trow];
+		values[i] = values[i] * mul;
+	}
+
+	// load offset column ids
+	INDEX_TYPE col_indices[NNZ_PER_THREAD];
+	//const int MaxVecLoadIndex = 16 / sizeof(INDEX_TYPE);
+	//warp_load_vectorized<MaxVecLoadIndex>(col_indices, inIndex + blockIdx.x*(THREADS*NNZ_PER_THREAD));
+	//vectorized_to_blocked<MaxVecLoadIndex>(col_indices);
+	ValueLoader<THREADS, NNZ_PER_THREAD, PADDEDLOAD, VALUE_TYPE1, VALUE_TYPE2, VALUE_TYPE3, INDEX_TYPE, 0>::loadIndices(col_indices, inIndex, num_non_zeroes);
+
+
+	//rowcount < THRESHOLD: gains from coordination probably small, so no buffered out 
+	// just atomic out (SORT_DIRECT -> sort for better out mem pattern)
+	if ((SORTED_RESOLVE || BUFFERED_RESOLVE) && smem.bNum <= ROWCOUNT_DIRECT_THRESHOLD)
+	{
+		if (SORT_DIRECT == 1)
+			threadOddEvenMergeSort<SortAscending>(col_indices, values);
+		else if (SORT_DIRECT > 1)
+			CubSorter(smem.sortStorage).SortBlockedToStriped(col_indices, values);
+
+#pragma unroll
+		for (int i = 0; i < NNZ_PER_THREAD; ++i)
+			if (values[i] != 0)
+				tempAtomicAdd(outVec + col_indices[i], values[i]);
+		return;
+	}
+
+	//full resolve in shared
+	if (SORTED_RESOLVE)
+	{
+		__syncthreads();
+
+		// sort multiplied data according to column
+		CubSorter(smem.sortStorage).Sort(col_indices, values);
+
+		if (threadIdx.x == 0)
+			smem.minCol = col_indices[0];
+		else if (threadIdx.x == THREADS - 1)
+			smem.maxCol = col_indices[NNZ_PER_THREAD - 1];
+	}
+	else if (BUFFERED_RESOLVE)
+	{
+		//TODO: consider value: if zero we dont care (important for last)
+		//determine min and max
+		uint32_t mymin = col_indices[0];
+		uint32_t mymax = col_indices[0];
+#pragma unroll
+		for (uint32_t i = 1; i < NNZ_PER_THREAD; ++i)
+		{
+			mymin = min(mymin, col_indices[i]);
+			mymax = max(mymax, col_indices[i]);
+		}
+#pragma unroll
+		for (uint32_t offset = 1; offset < WARP_SIZE; offset *= 2)
+		{
+			mymin = min(mymin, __shfl_down(mymin, offset));
+			mymax = max(mymax, __shfl_down(mymax, offset));
+		}
+		if (laneid() == 0)
+		{
+			atomicMin(&smem.minCol, mymin);
+			atomicMax(&smem.maxCol, mymax);
+		}
+	}
+	else
+	{
+		if (SORT_DIRECT == 1)
+			threadOddEvenMergeSort<SortAscending>(col_indices, values);
+		else if (SORT_DIRECT > 1)
+			CubSorter(smem.sortStorage).SortBlockedToStriped(col_indices, values);
+		// atomic to global out
+#pragma unroll
+		for (uint32_t i = 0; i < NNZ_PER_THREAD; ++i)
+			if (values[i] != 0)
+				tempAtomicAdd(outVec + col_indices[i], values[i]);
+		return;
+	}
+
+	__syncthreads();
+
+	// switch:
+	// o single column:
+	//   every thread adds its up, warp reduction, adomic add
+	// o number column < BUFFERSIZE
+	//   allocate output buffer in shared, zero buffer
+	//   every thread add its up and writes its data to shared on column switch
+	//   for last decide how many pivots there are and then either do a selective reduction or direct atomicadd
+	// o number column larger
+	//   add own up and atomic add to global
+
+	if (smem.minCol == smem.maxCol)
+	{
+		//single column
+		VALUE_TYPE3 out = values[0];
+#pragma unroll
+		for (uint32_t i = 1; i < NNZ_PER_THREAD; ++i)
+			out = out + values[i];
+#pragma unroll
+		for (uint32_t offset = 1; offset < WARP_SIZE; offset *= 2)
+			out = out + __shfl_down(out, offset);
+		if (laneid() == 0)
+			tempAtomicAdd(outVec + col_indices[0], out);
+		return;
+	}
+	else if (smem.maxCol - smem.minCol < OUTPUT_BUFFER_SIZE)
+	{
+		//zero output buffer
+		for (int i = 0; i < OUTPUT_BUFFER_SIZE / THREADS; ++i)
+			smem.outBuffer[i*THREADS + threadIdx.x] = 0;
+
+		const int REM = OUTPUT_BUFFER_SIZE - OUTPUT_BUFFER_SIZE / THREADS * THREADS;
+		if (REM > 0 && threadIdx.x < REM)
+			smem.outBuffer[(OUTPUT_BUFFER_SIZE - REM) + threadIdx.x] = 0;
+		__syncthreads();
+
+
+		if (SORTED_RESOLVE)
+		{
+			sortedResolve(values, col_indices, [&](INDEX_TYPE id, VALUE_TYPE3 out) {
+				smem.outBuffer[id - smem.minCol] = out;
+			}, [&](INDEX_TYPE id, VALUE_TYPE3 out) {
+				if (out != 0)
+					tempAtomicAdd(smem.outBuffer + id - smem.minCol, out);
+			}, []() {
+				__syncthreads();
+			});
+		}
+		else
+		{
+			// atomic to outputbuffer
+#pragma unroll
+			for (uint32_t i = 0; i < NNZ_PER_THREAD; ++i)
+				tempAtomicAdd(smem.outBuffer + col_indices[i] - smem.minCol, values[i]);
+		}
+		__syncthreads();
+		//atomic to global
+		for (int i = threadIdx.x; i < smem.maxCol - smem.minCol + 1; i += THREADS)
+		{
+			VALUE_TYPE3 out = smem.outBuffer[i];
+			if (out != 0)
+				tempAtomicAdd(outVec + smem.minCol + i, out);
+		}
+	}
+	else
+	{
+		if (SORTED_RESOLVE)
+		{
+			sortedResolve(values, col_indices, [&](INDEX_TYPE id, VALUE_TYPE3 out) {
+				if (out != 0)
+					tempAtomicAdd(outVec + id, out);
+			}, [&](INDEX_TYPE id, VALUE_TYPE3 out) {
+				if (out != 0)
+					tempAtomicAdd(outVec + id, out);
+			}, []() {});
+		}
+		else
+		{
+			// atomic to global out
+#pragma unroll
+			for (uint32_t i = 0; i < NNZ_PER_THREAD; ++i)
+				tempAtomicAdd(outVec + col_indices[i], values[i]);
+		}
+
+	}
+}
+
+
+
 template<int NNZ_PER_THREAD, typename T>
 struct HolaLaunchBounds
 {
@@ -1143,7 +1572,49 @@ void hola_spmv(void* tempmem, size_t& tempmemsize, dDenseVector<T>& res, const d
 	
 	if (transpose)
 	{
-		throw std::runtime_error("hola transpose not supported yet");
+
+		if (nnzperthread == 4)
+			DetermineBlockStartsTranspose<unsigned int, 4 * HolaLaunchBounds<4, T>::Threads, T> <<< divup<uint32_t>(std::max(m.rows + 1, m.cols), HolaLaunchBounds<4, T>::Threads), HolaLaunchBounds<4, T>::Threads >> > (m.rows, m.cols, m.row_offsets, reinterpret_cast<uint32_t*>(tempmem), res.data);
+		else
+			DetermineBlockStartsTranspose<unsigned int, 8 * HolaLaunchBounds<8, T>::Threads, T> <<<divup<uint32_t>(std::max(m.rows + 1, m.cols), HolaLaunchBounds<8, T>::Threads), HolaLaunchBounds<8, T>::Threads >> > (m.rows, m.cols, m.row_offsets, reinterpret_cast<uint32_t*>(tempmem), res.data);
+
+
+		if (padded)
+		{
+			switch (mode)
+			{
+			case HolaMode::SortedFour:
+				MultiplyAlongTranspose<T, T, T, unsigned int, unsigned int, 4 * blockSize4, blockSize4, HolaLaunchBounds<4, T>::Bounds, true, Scale, false, false, true, 32, 0, 0> <<<requiredBlocks, blockSize >>> (m.nnz, m.cols, m.rows, m.data, m.col_ids, m.row_offsets, v.data, res.data, 1, reinterpret_cast<uint32_t*>(tempmem));
+				break;
+			case HolaMode::SortedEight:
+				MultiplyAlongTranspose<T, T, T, unsigned int, unsigned int, 8 * blockSize8, blockSize8, HolaLaunchBounds<8, T>::Bounds, true, Scale, false, false, true, 32, 0, 0> <<<requiredBlocks, blockSize >>> (m.nnz, m.cols, m.rows, m.data, m.col_ids, m.row_offsets, v.data, res.data, 1, reinterpret_cast<uint32_t*>(tempmem));
+				break;
+			case HolaMode::NonSortedFour:
+				MultiplyAlongTranspose<T, T, T, unsigned int, unsigned int, 4 * blockSize4, blockSize4, HolaLaunchBounds<4, T>::Bounds, true, Scale, false, false, false, 32, 0, 0> <<<requiredBlocks, blockSize >>> (m.nnz, m.cols, m.rows, m.data, m.col_ids, m.row_offsets, v.data, res.data, 1, reinterpret_cast<uint32_t*>(tempmem));
+				break;
+			case HolaMode::NonSortedEight:
+				MultiplyAlongTranspose<T, T, T, unsigned int, unsigned int, 8 * blockSize8, blockSize8, HolaLaunchBounds<8, T>::Bounds, true, Scale, false, false, false, 32, 0, 0> <<<requiredBlocks, blockSize >>> (m.nnz, m.cols, m.rows, m.data, m.col_ids, m.row_offsets, v.data, res.data, 1, reinterpret_cast<uint32_t*>(tempmem));
+				break;
+			}
+		}
+		else
+		{
+			switch (mode)
+			{
+			case HolaMode::SortedFour:
+				MultiplyAlongTranspose<T, T, T, unsigned int, unsigned int, 4 * blockSize4, blockSize4, HolaLaunchBounds<4, T>::Bounds, false, Scale, false, false, true, 32, 0, 0> <<<requiredBlocks, blockSize >>> (m.nnz, m.cols, m.rows, m.data, m.col_ids, m.row_offsets, v.data, res.data, 1, reinterpret_cast<uint32_t*>(tempmem));
+				break;
+			case HolaMode::SortedEight:
+				MultiplyAlongTranspose<T, T, T, unsigned int, unsigned int, 8 * blockSize8, blockSize8, HolaLaunchBounds<8, T>::Bounds, false, Scale, false, false, true, 32, 0, 0> <<<requiredBlocks, blockSize >>> (m.nnz, m.cols, m.rows, m.data, m.col_ids, m.row_offsets, v.data, res.data, 1, reinterpret_cast<uint32_t*>(tempmem));
+				break;
+			case HolaMode::NonSortedFour:
+				MultiplyAlongTranspose<T, T, T, unsigned int, unsigned int, 4 * blockSize4, blockSize4, HolaLaunchBounds<4, T>::Bounds, false, Scale, false, false, false, 32, 0, 0> <<<requiredBlocks, blockSize >>> (m.nnz, m.cols, m.rows, m.data, m.col_ids, m.row_offsets, v.data, res.data, 1, reinterpret_cast<uint32_t*>(tempmem));
+				break;
+			case HolaMode::NonSortedEight:
+				MultiplyAlongTranspose<T, T, T, unsigned int, unsigned int, 8 * blockSize8, blockSize8, HolaLaunchBounds<8, T>::Bounds, false, Scale, false, false, false, 32, 0, 0> <<<requiredBlocks, blockSize >>> (m.nnz, m.cols, m.rows, m.data, m.col_ids, m.row_offsets, v.data, res.data, 1, reinterpret_cast<uint32_t*>(tempmem));
+				break;
+			}
+		}
 	}
 	else
 	{
