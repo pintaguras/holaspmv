@@ -13,7 +13,12 @@
 
 const uint32_t WARP_SIZE = 32;
 
-
+__device__ __forceinline__ uint32_t laneid()
+{
+	uint32_t mylaneid;
+	asm("mov.u32 %0, %laneid;" : "=r" (mylaneid));
+	return mylaneid;
+}
 
 
 template<int END, int BEGIN = 0>
@@ -29,7 +34,7 @@ struct ConditionalIteration
 	}
 };
 
-template<uint32_t END>
+template<int END>
 struct ConditionalIteration<END, END>
 {
 	template<typename F>
@@ -280,10 +285,3 @@ struct SortDescending
 		return a < b;
 	}
 };
-
-__device__ __forceinline__ inline uint32_t laneid()
-{
-	uint32_t mylaneid;
-	asm("mov.u32 %0, %laneid;" : "=r" (mylaneid));
-	return mylaneid;
-}

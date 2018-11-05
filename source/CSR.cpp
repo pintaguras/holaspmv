@@ -48,6 +48,7 @@ namespace {
 			return true;
 		}
 	};
+	constexpr char CSRIOHeader::Magic[];
 }
 
 template<typename T>
