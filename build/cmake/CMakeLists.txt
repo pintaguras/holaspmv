@@ -46,7 +46,8 @@ FILE(GLOB cudasources ${holaDir}/source/*.cu)
 
 
 INCLUDE_DIRECTORIES(${holaDir}/include/)
+INCLUDE_DIRECTORIES(/usr/local/cuda/include)
 
 
 ADD_EXECUTABLE(holaSPMV ${headers} ${cudaheaders} ${sources} ${cudasources})
-target_link_libraries(holaSPMV ${CUDA_CUDA_LIBRARY} ${CUDA_CUDART_LIBRARY})
+target_link_libraries(holaSPMV ${CUDA_LIBRARY} ${CUDA_cudart_static_LIBRARY})

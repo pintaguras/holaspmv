@@ -72,12 +72,12 @@ CSR<T> loadCSR(const char * file)
 	CSRIOHeader header;
 	fstream.read(reinterpret_cast<char*>(&header), sizeof(CSRIOHeader));
 	if (!fstream.good())
-		throw std::exception("Could not read CSR header");
+		throw std::runtime_error("Could not read CSR header");
 	if (!header.checkMagic())
-		throw std::exception("File does not appear to be a CSR Matrix");
+		throw std::runtime_error("File does not appear to be a CSR Matrix");
 
 	if (header.typesize != CSRIOHeader::typeSize<T>())
-		throw std::exception("File does not contain a CSR matrix with matching type");
+		throw std::runtime_error("File does not contain a CSR matrix with matching type");
 
 	CSR<T> res;
 	res.alloc(header.num_rows, header.num_columns, header.num_non_zeroes);
@@ -87,7 +87,7 @@ CSR<T> loadCSR(const char * file)
 	fstream.read(reinterpret_cast<char*>(&res.row_offsets[0]), (res.rows+1) * sizeof(unsigned int));
 
 	if (!fstream.good())
-		throw std::exception("Could not read CSR matrix data");
+		throw std::runtime_error("Could not read CSR matrix data");
 
 	return res;
 }
